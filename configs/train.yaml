@@ -1,0 +1,25 @@
+data:
+  processed_path: "data/processed/ai4i2020_processed.csv"
+  target_col: "target"
+  test_size: 0.2
+  random_state: 42
+
+mlflow:
+  tracking_uri: "sqlite:///mlflow.db"
+  experiment_name: "ai4i2020-predictive-maintenance"
+
+output:
+  model_path: "models/model.joblib"
+  metrics_path: "models/metrics.json"
+
+models:
+  logistic_regression:
+    C: 1.0
+    max_iter: 1000
+  random_forest:
+    n_estimators: 200
+    max_depth: 10
+  gradient_boosting:
+    max_iter: 200
+    learning_rate: 0.05
+    max_depth: 6

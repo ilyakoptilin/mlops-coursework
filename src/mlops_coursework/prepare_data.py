@@ -1,5 +1,6 @@
 import math
 from pathlib import Path
+
 import pandas as pd
 
 RAW_PATH = Path("data/raw/ai4i2020.csv")

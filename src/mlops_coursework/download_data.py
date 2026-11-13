@@ -1,5 +1,6 @@
-from pathlib import Path
 import urllib.request
+from pathlib import Path
+
 import pandas as pd
 
 DATA_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/00601/ai4i2020.csv"

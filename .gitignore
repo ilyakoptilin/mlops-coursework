@@ -19,3 +19,5 @@ mlflow.db
 # Разрешаем паспорта версий данных DVC
 !data/raw/*.dvc
 !data/processed/*.dvc
+
+!models/metrics.json

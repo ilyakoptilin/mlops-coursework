@@ -9,17 +9,19 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from mlops_coursework.features import build_features
 
-@pytest.fixture(autouse=True, scope="session")
-def ensure_model_exists(tmp_path_factory):
-    model_path = Path(os.getenv("MODEL_PATH", "models/model.joblib"))
-    if model_path.exists():
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_test_model(tmp_path_factory: pytest.TempPathFactory) -> None:
+    default_model = Path("models/model.joblib")
+    if default_model.exists():
         return
 
     tmp_dir = tmp_path_factory.mktemp("models")
     fallback_path = tmp_dir / "model.joblib"
 
-    df = pd.DataFrame(
+    raw_samples = pd.DataFrame(
         [
             {
                 "machine_type": "M",
@@ -28,10 +30,14 @@ def ensure_model_exists(tmp_path_factory):
                 "rotational_speed_rpm": 1551,
                 "torque_nm": 42.8,
                 "tool_wear_min": 10,
-                "temp_diff_k": 10.5,
-                "power_w": 6951.59,
-                "overstrain_index": 428.0,
-                "target": 0,
+            },
+            {
+                "machine_type": "H",
+                "air_temp_k": 298.5,
+                "process_temp_k": 309.0,
+                "rotational_speed_rpm": 1500,
+                "torque_nm": 40.0,
+                "tool_wear_min": 20,
             },
             {
                 "machine_type": "L",
@@ -40,43 +46,38 @@ def ensure_model_exists(tmp_path_factory):
                 "rotational_speed_rpm": 1320,
                 "torque_nm": 68.5,
                 "tool_wear_min": 225,
-                "temp_diff_k": 7.6,
-                "power_w": 9468.76,
-                "overstrain_index": 15412.5,
-                "target": 1,
+            },
+            {
+                "machine_type": "L",
+                "air_temp_k": 303.0,
+                "process_temp_k": 311.0,
+                "rotational_speed_rpm": 1300,
+                "torque_nm": 70.0,
+                "tool_wear_min": 230,
             },
         ]
-        * 10
     )
+    x_train = build_features(raw_samples)
+    y_train = [0, 0, 1, 1]
 
     cat_cols = ["machine_type"]
-    num_cols = [
-        "air_temp_k",
-        "process_temp_k",
-        "rotational_speed_rpm",
-        "torque_nm",
-        "tool_wear_min",
-        "temp_diff_k",
-        "power_w",
-        "overstrain_index",
-    ]
+    num_cols = [c for c in x_train.columns if c != "machine_type"]
     preprocessor = ColumnTransformer(
-        transformers=[
-            ("num", StandardScaler(), num_cols),
+        [
             ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), cat_cols),
+            ("num", StandardScaler(), num_cols),
         ]
     )
-    pipe = Pipeline(
-        steps=[
+    pipeline = Pipeline(
+        [
             ("preprocessor", preprocessor),
-            (
-                "classifier",
-                HistGradientBoostingClassifier(
-                    min_samples_leaf=1, max_iter=50, random_state=42
-                ),
-            ),
+            ("model", HistGradientBoostingClassifier(min_samples_leaf=1)),
         ]
     )
-    pipe.fit(df[cat_cols + num_cols], df["target"])
-    joblib.dump(pipe, fallback_path)
+    pipeline.fit(x_train, y_train)
+    joblib.dump(pipeline, fallback_path)
+
     os.environ["MODEL_PATH"] = str(fallback_path)
+    from mlops_coursework import api
+
+    api.MODEL_PATH = fallback_path

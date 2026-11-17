@@ -1,0 +1,29 @@
+train:
+  data_url: "[https://archive.ics.uci.edu/ml/machine-learning-databases/00601/ai4i2020.csv](https://archive.ics.uci.edu/ml/machine-learning-databases/00601/ai4i2020.csv)"
+  raw_data_path: "data/raw/ai4i2020.csv"
+  processed_data_path: "data/processed/ai4i2020_processed.csv"
+  model_output_path: "models/model.joblib"
+  metrics_output_path: "models/metrics.json"
+  mlflow_tracking_uri: "sqlite:///mlflow.db"
+  experiment_name: "ai4i-predictive-maintenance"
+  test_size: 0.2
+  random_state: 42
+  models:
+    logistic_regression:
+      max_iter: 1000
+      C: 1.0
+    random_forest:
+      n_estimators: 200
+      max_depth: 12
+    hist_gradient_boosting:
+      max_iter: 200
+      learning_rate: 0.05
+      max_depth: 6
+
+inference:
+  model_path: "models/model.joblib"
+  model_version: "v1.0.0"
+  host: "0.0.0.0"
+  port: 8000
+  high_risk_threshold: 0.7
+  medium_risk_threshold: 0.3

@@ -21,3 +21,4 @@ mlflow.db
 !data/processed/*.dvc
 
 !models/metrics.json
+.coverage

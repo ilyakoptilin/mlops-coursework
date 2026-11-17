@@ -16,11 +16,11 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY configs ./configs
 COPY src ./src
 
-RUN uv sync --frozen --no-dev && \
-    python src/mlops_coursework/download_data.py && \
-    python src/mlops_coursework/prepare_data.py && \
-    python src/mlops_coursework/train.py && \
-    rm -rf mlruns mlflow.db data/raw data/processed && \
+RUN uv sync --frozen --no-dev
+RUN python src/mlops_coursework/download_data.py
+RUN python src/mlops_coursework/prepare_data.py
+RUN python src/mlops_coursework/train.py
+RUN rm -rf mlruns mlflow.db data/raw data/processed && \
     useradd --create-home --shell /bin/bash appuser && \
     chown -R appuser:appuser /app
 

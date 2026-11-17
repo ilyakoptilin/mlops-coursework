@@ -55,9 +55,11 @@ def main() -> None:
         stratify=y_data,
     )
 
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", cfg["mlflow_tracking_uri"])
-    mlflow.set_tracking_uri(tracking_uri)
-    mlflow.set_experiment(cfg["experiment_name"])
+    skip_mlflow = os.getenv("SKIP_MLFLOW", "0") == "1"
+    if not skip_mlflow:
+        tracking_uri = os.getenv("MLFLOW_TRACKING_URI", cfg["mlflow_tracking_uri"])
+        mlflow.set_tracking_uri(tracking_uri)
+        mlflow.set_experiment(cfg["experiment_name"])
 
     models_cfg = cfg["models"]
     candidates = {
@@ -89,31 +91,32 @@ def main() -> None:
     all_metrics: dict[str, dict[str, float]] = {}
 
     for name, estimator in candidates.items():
-        with mlflow.start_run(run_name=name):
-            pipeline = Pipeline([("preprocessor", build_preprocessor()), ("model", estimator)])
-            pipeline.fit(x_train, y_train)
+        pipeline = Pipeline([("preprocessor", build_preprocessor()), ("model", estimator)])
+        pipeline.fit(x_train, y_train)
 
-            y_pred = pipeline.predict(x_test)
-            y_prob = pipeline.predict_proba(x_test)[:, 1]
+        y_pred = pipeline.predict(x_test)
+        y_prob = pipeline.predict_proba(x_test)[:, 1]
 
-            metrics = {
-                "accuracy": round(float(accuracy_score(y_test, y_pred)), 4),
-                "precision": round(float(precision_score(y_test, y_pred)), 4),
-                "recall": round(float(recall_score(y_test, y_pred)), 4),
-                "f1": round(float(f1_score(y_test, y_pred)), 4),
-                "roc_auc": round(float(roc_auc_score(y_test, y_prob)), 4),
-                "pr_auc": round(float(average_precision_score(y_test, y_prob)), 4),
-            }
-            all_metrics[name] = metrics
+        metrics = {
+            "accuracy": round(float(accuracy_score(y_test, y_pred)), 4),
+            "precision": round(float(precision_score(y_test, y_pred)), 4),
+            "recall": round(float(recall_score(y_test, y_pred)), 4),
+            "f1": round(float(f1_score(y_test, y_pred)), 4),
+            "roc_auc": round(float(roc_auc_score(y_test, y_prob)), 4),
+            "pr_auc": round(float(average_precision_score(y_test, y_prob)), 4),
+        }
+        all_metrics[name] = metrics
 
-            mlflow.log_params({"model_type": name, **models_cfg[name]})
-            mlflow.log_metrics(metrics)
-            mlflow.sklearn.log_model(pipeline, artifact_path="model")
+        if not skip_mlflow:
+            with mlflow.start_run(run_name=name):
+                mlflow.log_params({"model_type": name, **models_cfg[name]})
+                mlflow.log_metrics(metrics)
+                mlflow.sklearn.log_model(pipeline, artifact_path="model")
 
-            if metrics["f1"] > best_f1:
-                best_f1 = metrics["f1"]
-                best_pipeline = pipeline
-                best_name = name
+        if metrics["f1"] > best_f1:
+            best_f1 = metrics["f1"]
+            best_pipeline = pipeline
+            best_name = name
 
     model_path = Path(cfg["model_output_path"])
     model_path.parent.mkdir(parents=True, exist_ok=True)

@@ -19,8 +19,8 @@ COPY src ./src
 RUN uv sync --frozen --no-dev
 RUN python src/mlops_coursework/download_data.py
 RUN python src/mlops_coursework/prepare_data.py
-RUN python src/mlops_coursework/train.py
-RUN rm -rf mlruns mlflow.db data/raw data/processed && \
+RUN SKIP_MLFLOW=1 python src/mlops_coursework/train.py
+RUN rm -rf data/raw data/processed && \
     useradd --create-home --shell /bin/bash appuser && \
     chown -R appuser:appuser /app
 

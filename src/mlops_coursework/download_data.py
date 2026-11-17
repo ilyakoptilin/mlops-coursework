@@ -9,7 +9,8 @@ FALLBACK_URLS = [
 
 
 def _download_file(url: str, destination: Path) -> None:
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    clean_url = url.strip().strip("[]()")
+    req = urllib.request.Request(clean_url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=30) as response, destination.open("wb") as out:
         out.write(response.read())
 
@@ -25,7 +26,7 @@ def main() -> None:
         try:
             _download_file(url, raw_path)
             if raw_path.stat().st_size > 100_000:
-                print(f"Downloaded dataset to {raw_path} from {url}")
+                print(f"Downloaded dataset to {raw_path}")
                 return
         except Exception as exc:  # noqa: BLE001
             last_error = exc

@@ -5,7 +5,7 @@ import urllib.request
 
 import streamlit as st
 
-API_URL = os.getenv("API_URL", "[http://127.0.0.1:8000](http://127.0.0.1:8000)")
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(page_title="AI4I Predictive Maintenance", layout="centered")
 st.title("AI4I 2020 Predictive Maintenance")

@@ -1,11 +1,11 @@
 import json
+import os
 from pathlib import Path
 
 import joblib
 import mlflow
 import mlflow.sklearn
 import pandas as pd
-import yaml
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -21,153 +21,114 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from mlops_coursework.features import (
+    BASE_FEATURE_COLUMNS,
+    ENGINEERED_FEATURE_COLUMNS,
+    load_config,
+)
+
 CATEGORICAL_COLS = ["machine_type"]
-NUMERIC_COLS = [
-    "air_temp_k",
-    "process_temp_k",
-    "rotational_speed_rpm",
-    "torque_nm",
-    "tool_wear_min",
-    "temp_diff_k",
-    "power_w",
-    "overstrain_index",
-]
-
-
-def load_config(config_path: str = "configs/train.yaml") -> dict:
-    with open(config_path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+NUMERIC_COLS = [c for c in BASE_FEATURE_COLUMNS if c != "machine_type"] + ENGINEERED_FEATURE_COLUMNS
 
 
 def build_preprocessor() -> ColumnTransformer:
     return ColumnTransformer(
         transformers=[
+            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), CATEGORICAL_COLS),
             ("num", StandardScaler(), NUMERIC_COLS),
-            (
-                "cat",
-                OneHotEncoder(handle_unknown="ignore", sparse_output=False),
-                CATEGORICAL_COLS,
-            ),
         ]
     )
 
 
-def evaluate_predictions(y_true, y_pred, y_proba) -> dict[str, float]:
-    return {
-        "accuracy": round(float(accuracy_score(y_true, y_pred)), 4),
-        "precision": round(float(precision_score(y_true, y_pred, zero_division=0)), 4),
-        "recall": round(float(recall_score(y_true, y_pred, zero_division=0)), 4),
-        "f1": round(float(f1_score(y_true, y_pred, zero_division=0)), 4),
-        "roc_auc": round(float(roc_auc_score(y_true, y_proba)), 4),
-        "pr_auc": round(float(average_precision_score(y_true, y_proba)), 4),
-    }
-
-
 def main() -> None:
-    cfg = load_config()
-    df = pd.read_csv(cfg["data"]["processed_path"])
-    target_col = cfg["data"]["target_col"]
+    cfg = load_config()["train"]
+    df = pd.read_csv(cfg["processed_data_path"])
 
-    X = df[CATEGORICAL_COLS + NUMERIC_COLS]
-    y = df[target_col]
+    x_data = df[CATEGORICAL_COLS + NUMERIC_COLS]
+    y_data = df["target"]
 
-    # Стратифицированное разбиение сохраняет долю поломок (3.39%) в train и test
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=cfg["data"]["test_size"],
-        random_state=cfg["data"]["random_state"],
-        stratify=y,
+    x_train, x_test, y_train, y_test = train_test_split(
+        x_data,
+        y_data,
+        test_size=cfg["test_size"],
+        random_state=cfg["random_state"],
+        stratify=y_data,
     )
 
-    mlflow.set_tracking_uri(cfg["mlflow"]["tracking_uri"])
-    mlflow.set_experiment(cfg["mlflow"]["experiment_name"])
+    skip_mlflow = os.getenv("SKIP_MLFLOW", "0") == "1"
+    if not skip_mlflow:
+        tracking_uri = os.getenv("MLFLOW_TRACKING_URI", cfg["mlflow_tracking_uri"])
+        mlflow.set_tracking_uri(tracking_uri)
+        mlflow.set_experiment(cfg["experiment_name"])
 
-    seed = cfg["data"]["random_state"]
     models_cfg = cfg["models"]
-
     candidates = {
-        "logistic_regression": (
-            LogisticRegression(
-                C=models_cfg["logistic_regression"]["C"],
-                max_iter=models_cfg["logistic_regression"]["max_iter"],
-                class_weight="balanced",
-                random_state=seed,
-            ),
-            models_cfg["logistic_regression"],
+        "logistic_regression": LogisticRegression(
+            max_iter=models_cfg["logistic_regression"]["max_iter"],
+            C=models_cfg["logistic_regression"]["C"],
+            class_weight="balanced",
+            random_state=cfg["random_state"],
         ),
-        "random_forest": (
-            RandomForestClassifier(
-                n_estimators=models_cfg["random_forest"]["n_estimators"],
-                max_depth=models_cfg["random_forest"]["max_depth"],
-                class_weight="balanced",
-                random_state=seed,
-            ),
-            models_cfg["random_forest"],
+        "random_forest": RandomForestClassifier(
+            n_estimators=models_cfg["random_forest"]["n_estimators"],
+            max_depth=models_cfg["random_forest"]["max_depth"],
+            class_weight="balanced",
+            random_state=cfg["random_state"],
+            n_jobs=-1,
         ),
-        "gradient_boosting": (
-            HistGradientBoostingClassifier(
-                max_iter=models_cfg["gradient_boosting"]["max_iter"],
-                learning_rate=models_cfg["gradient_boosting"]["learning_rate"],
-                max_depth=models_cfg["gradient_boosting"]["max_depth"],
-                class_weight="balanced",
-                random_state=seed,
-            ),
-            models_cfg["gradient_boosting"],
+        "hist_gradient_boosting": HistGradientBoostingClassifier(
+            max_iter=models_cfg["hist_gradient_boosting"]["max_iter"],
+            learning_rate=models_cfg["hist_gradient_boosting"]["learning_rate"],
+            max_depth=models_cfg["hist_gradient_boosting"]["max_depth"],
+            class_weight="balanced",
+            random_state=cfg["random_state"],
         ),
     }
 
-    best_name = ""
     best_f1 = -1.0
-    best_pipeline = None
-    all_results = {}
+    best_pipeline: Pipeline | None = None
+    best_name = ""
+    all_metrics: dict[str, dict[str, float]] = {}
 
-    for name, (estimator, params) in candidates.items():
-        with mlflow.start_run(run_name=name):
-            pipeline = Pipeline(
-                steps=[
-                    ("preprocessor", build_preprocessor()),
-                    ("classifier", estimator),
-                ]
-            )
-            pipeline.fit(X_train, y_train)
+    for name, estimator in candidates.items():
+        pipeline = Pipeline([("preprocessor", build_preprocessor()), ("model", estimator)])
+        pipeline.fit(x_train, y_train)
 
-            y_pred = pipeline.predict(X_test)
-            y_proba = pipeline.predict_proba(X_test)[:, 1]
-            metrics = evaluate_predictions(y_test, y_pred, y_proba)
+        y_pred = pipeline.predict(x_test)
+        y_prob = pipeline.predict_proba(x_test)[:, 1]
 
-            mlflow.log_param("model_type", name)
-            mlflow.log_params(params)
-            mlflow.log_metrics(metrics)
-            mlflow.sklearn.log_model(
-                pipeline,
-                name="model",
-                serialization_format="cloudpickle",
-            )
+        metrics = {
+            "accuracy": round(float(accuracy_score(y_test, y_pred)), 4),
+            "precision": round(float(precision_score(y_test, y_pred)), 4),
+            "recall": round(float(recall_score(y_test, y_pred)), 4),
+            "f1": round(float(f1_score(y_test, y_pred)), 4),
+            "roc_auc": round(float(roc_auc_score(y_test, y_prob)), 4),
+            "pr_auc": round(float(average_precision_score(y_test, y_prob)), 4),
+        }
+        all_metrics[name] = metrics
 
-            all_results[name] = metrics
-            print(f"\n[{name}] Метрики на тесте: {metrics}")
+        if not skip_mlflow:
+            with mlflow.start_run(run_name=name):
+                mlflow.log_params({"model_type": name, **models_cfg[name]})
+                mlflow.log_metrics(metrics)
+                mlflow.sklearn.log_model(pipeline, artifact_path="model")
 
-            if metrics["f1"] > best_f1:
-                best_f1 = metrics["f1"]
-                best_name = name
-                best_pipeline = pipeline
+        if metrics["f1"] > best_f1:
+            best_f1 = metrics["f1"]
+            best_pipeline = pipeline
+            best_name = name
 
-    model_path = Path(cfg["output"]["model_path"])
-    metrics_path = Path(cfg["output"]["metrics_path"])
+    model_path = Path(cfg["model_output_path"])
     model_path.parent.mkdir(parents=True, exist_ok=True)
-
     joblib.dump(best_pipeline, model_path)
-    summary = {
-        "best_model": best_name,
-        "best_f1": best_f1,
-        "models": all_results,
-    }
-    with open(metrics_path, "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2, ensure_ascii=False)
 
-    print(f"\nПобедитель: {best_name} (F1 = {best_f1})")
-    print(f"Модель сохранена в {model_path}, отчёт в {metrics_path}")
+    metrics_path = Path(cfg["metrics_output_path"])
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    metrics_path.write_text(
+        json.dumps({"best_model": best_name, "results": all_metrics}, indent=2),
+        encoding="utf-8",
+    )
+    print(f"Best model: {best_name} (F1={best_f1:.4f}) saved to {model_path}")
 
 
 if __name__ == "__main__":

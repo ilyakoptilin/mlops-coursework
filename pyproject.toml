@@ -15,6 +15,7 @@ dependencies = [
     "pydantic-settings>=2.16.2",
     "pyyaml>=6.0.3",
     "scikit-learn>=1.9.1",
+    "streamlit>=1.67.0",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -29,5 +30,15 @@ build-backend = "uv_build"
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.17.5",
+]
+
+[tool.coverage.run]
+source = ["src/mlops_coursework"]
+omit = [
+    "src/mlops_coursework/ui.py",
+    "src/mlops_coursework/download_data.py",
+    "src/mlops_coursework/prepare_data.py",
+    "src/mlops_coursework/train.py",
 ]

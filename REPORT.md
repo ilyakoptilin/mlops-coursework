@@ -12,7 +12,7 @@
   - `v1` (сырые данные): `data/raw/ai4i2020.csv.dvc`
   - `v2` (подготовленные признаки): `data/processed/ai4i2020_processed.csv.dvc`
 - **Артефакт модели:** `models/model.joblib` (версия `v1.0.0`, `HistGradientBoostingClassifier`, `F1 = 0.7891`, `PR-AUC = 0.8929`; воспроизводится внутри Docker при сборке образа и через `src/mlops_coursework/train.py`)
-- **Демо-видео (1–3 минуты):** `<ссылка будет добавлена после записи>`
+- **Демо-видео (1–3 минуты): https://drive.google.com/file/d/1Ya6szFNAlrf54gWxLHt3R-GgX_ECIrkF/view?usp=share_link
 
 ## 2. Результаты проверки компонентов
 
